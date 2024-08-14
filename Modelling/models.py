@@ -8,6 +8,43 @@ from sklearn.feature_selection import SelectFromModel
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
+def prepare_base_data(df, random_state = 42):
+    
+    # drop columns with more than 30% missing values and irrelevant columns
+    columns_to_drop = ['yRelativeLowerPower.scaled.corr.N4', 'yRelativeLowerPower.N4', 'yRelativeLowerPower.scaled.N4', 
+                       'cTOTEXs', 'cTOTEXs_RP3', 'cTOTEXn_RP3', 'NameOrg', 'NameShort', 'dmuName', 'dmu', 'dDateData', 'BNR', 'BNR_NNR']
+    df = df.drop(columns=columns_to_drop)
+    
+    # drop columns with more than 90% zero values
+    threshold = 0.9 * len(df)
+    sparse_columns_to_drop = [col for col in df.columns if (df[col] == 0).sum() > threshold]
+    df = df.drop(columns=sparse_columns_to_drop)
+    
+    df_train, df_test = train_test_split(df, test_size=0.1, random_state=random_state)
+    
+    # scale and impute Data
+    scaler = StandardScaler()
+
+    # fit the scaler on the training data and transform both training and test data
+    df_train_scaled = scaler.fit_transform(df_train)
+    df_test_scaled = scaler.transform(df_test)
+
+    # initialize the KNN imputer
+    imputer = KNNImputer(n_neighbors=3)
+
+    # fit the imputer on the training data and transform both training and test data
+    df_train_scaled = imputer.fit_transform(df_train_scaled)
+    df_test_scaled = imputer.transform(df_test_scaled)
+
+    # inverse transform to convert the data back to the original scale
+    df_train = scaler.inverse_transform(df_train_scaled)
+    df_test = scaler.inverse_transform(df_test_scaled)
+
+    # convert the results back to DataFrames
+    df_train = pd.DataFrame(df_train, columns=df.columns)
+    df_test = pd.DataFrame(df_test, columns=df.columns)    
+    
+    return df_train, df_test
 
 def lasso_regression(train_df, target_column, random_state=42):
     # split data into features and target
