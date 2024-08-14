@@ -88,7 +88,7 @@ def random_forest_regression(train_df, target_column, random_state=42):
     return best_model, feature_importance_df
 
 
-def evaluation_metrics(model_name, model, train_df, test_df, target_column, random_state=42, scaling = False):
+def evaluation_metrics(model_name, model, train_df, test_df, target_column, random_state=42, scaling = False, outcome_transformation = "None"):
     # split data into features and target
     X_train = train_df.drop(columns=[target_column])
     y_train = train_df[target_column]
@@ -109,7 +109,19 @@ def evaluation_metrics(model_name, model, train_df, test_df, target_column, rand
 
     y_train_pred = model.predict(X_train_scaled)
     y_test_pred = model.predict(X_test_scaled)
-
+    
+    # in case of outcome transformation, revert to have original scale of data
+    if outcome_transformation == "log":
+        y_train_pred = np.exp(y_train_pred)
+        y_test_pred = np.exp(y_test_pred)
+        y_train = np.exp(y_train)
+        y_test = np.exp(y_test)
+    elif outcome_transformation == "sqrt":
+        y_train_pred = np.square(y_train_pred)
+        y_test_pred = np.square(y_test_pred)
+        y_train = np.square(y_train)
+        y_test = np.square(y_test)
+        
     print("Evaluating the model...")
     
     # evaluating on train data
