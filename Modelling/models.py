@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from sklearn.linear_model import LassoCV
+from sklearn.linear_model import LassoCV, LinearRegression
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error, mean_absolute_percentage_error
 from sklearn.model_selection import GridSearchCV
@@ -39,6 +39,51 @@ def lasso_regression(df_train, target, random_state=42):
     print(variable_importance_df)
     
     return lasso, variable_importance_df
+
+def lasso_feature_selection_linear_regression(df_train, target, random_state=42):
+    # Split data into features and target
+    X_train = df_train.drop(columns=[target])
+    y_train = df_train[target]
+    
+    # Standardize the features using only the training data
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    
+    print("Performing Lasso regression for feature selection...")
+    
+    # Lasso regression with cross-validation for hyperparameter tuning of regularization parameter alpha
+    lasso = LassoCV(cv=5, random_state=random_state, max_iter=10000).fit(X_train_scaled, y_train)
+    
+    selected_features_lasso = np.where(lasso.coef_ != 0)[0]
+    selected_feature_names_lasso = X_train.columns[selected_features_lasso]
+
+    print(f"Selected features by Lasso ({len(selected_feature_names_lasso)}): {selected_feature_names_lasso}")
+    
+    # If no features are selected by Lasso, raise an exception
+    if len(selected_feature_names_lasso) == 0:
+        raise ValueError("No features were selected by Lasso. Try adjusting the Lasso parameters.")
+    
+    # Collect variable importance
+    variable_importance_dict = {
+        "Feature": selected_feature_names_lasso,
+        "Coefficient": lasso.coef_[selected_features_lasso]
+    }
+    variable_importance_df = pd.DataFrame(variable_importance_dict)
+    variable_importance_df = variable_importance_df.sort_values(by="Coefficient", ascending=False).reset_index(drop=True)
+
+    print("\nVariable Importance (Lasso):")
+    print(variable_importance_df)
+    
+    # Use only the selected features for the linear regression model
+    X_train_selected = X_train[selected_feature_names_lasso]
+
+    # Fit linear regression model with selected features
+    linear_regression_model = LinearRegression().fit(X_train_selected, y_train)
+    
+    print("\nFitted Linear Regression model with selected features.")
+    
+    return linear_regression_model, variable_importance_df, selected_feature_names_lasso
+
 
 def random_forest_regression(df_train, target, random_state=42):
     # split data into features and target
