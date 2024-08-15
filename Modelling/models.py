@@ -3,54 +3,15 @@ import numpy as np
 from sklearn.linear_model import LassoCV
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error, mean_absolute_percentage_error
-from sklearn.model_selection import GridSearchCV, train_test_split
+from sklearn.model_selection import GridSearchCV
 from sklearn.feature_selection import SelectFromModel
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
-from sklearn.impute import KNNImputer
 
-def prepare_base_data(df, random_state = 42):
-    
-    # drop columns with more than 30% missing values and irrelevant columns
-    columns_to_drop = ['yRelativeLowerPower.scaled.corr.N4', 'yRelativeLowerPower.N4', 'yRelativeLowerPower.scaled.N4', 
-                       'cTOTEXs', 'cTOTEXs_RP3', 'cTOTEXn_RP3', 'NameOrg', 'NameShort', 'dmuName', 'dmu', 'dDateData', 'BNR', 'BNR_NNR']
-    df = df.drop(columns=columns_to_drop)
-    
-    # drop columns with more than 90% zero values
-    threshold = 0.9 * len(df)
-    sparse_columns_to_drop = [col for col in df.columns if (df[col] == 0).sum() > threshold]
-    df = df.drop(columns=sparse_columns_to_drop)
-    
-    df_train, df_test = train_test_split(df, test_size=0.1, random_state=random_state)
-    
-    # scale and impute Data
-    scaler = StandardScaler()
-
-    # fit the scaler on the training data and transform both training and test data
-    df_train_scaled = scaler.fit_transform(df_train)
-    df_test_scaled = scaler.transform(df_test)
-
-    # initialize the KNN imputer
-    imputer = KNNImputer(n_neighbors=3)
-
-    # fit the imputer on the training data and transform both training and test data
-    df_train_scaled = imputer.fit_transform(df_train_scaled)
-    df_test_scaled = imputer.transform(df_test_scaled)
-
-    # inverse transform to convert the data back to the original scale
-    df_train = scaler.inverse_transform(df_train_scaled)
-    df_test = scaler.inverse_transform(df_test_scaled)
-
-    # convert the results back to DataFrames
-    df_train = pd.DataFrame(df_train, columns=df.columns)
-    df_test = pd.DataFrame(df_test, columns=df.columns)    
-    
-    return df_train, df_test
-
-def lasso_regression(train_df, target_column, random_state=42):
+def lasso_regression(df_train, target, random_state=42):
     # split data into features and target
-    X_train = train_df.drop(columns=[target_column])
-    y_train = train_df[target_column]
+    X_train = df_train.drop(columns=[target])
+    y_train = df_train[target]
     
     # standardize the features using only the training data
     scaler = StandardScaler()
@@ -79,10 +40,10 @@ def lasso_regression(train_df, target_column, random_state=42):
     
     return lasso, variable_importance_df
 
-def random_forest_regression(train_df, target_column, random_state=42):
+def random_forest_regression(df_train, target, random_state=42):
     # split data into features and target
-    X_train = train_df.drop(columns=[target_column])
-    y_train = train_df[target_column]
+    X_train = df_train.drop(columns=[target])
+    y_train = df_train[target]
     
     # define the model
     rf = RandomForestRegressor(random_state=random_state)
@@ -126,13 +87,13 @@ def random_forest_regression(train_df, target_column, random_state=42):
     return best_model, feature_importance_df
 
 
-def evaluation_metrics(model_name, model, train_df, test_df, target_column, random_state=42, scaling = False, outcome_transformation = "None"):
+def evaluation_metrics(model_name, model, df_train, df_test, target, random_state=42, scaling = False, outcome_transformation = "None"):
     # split data into features and target
-    X_train = train_df.drop(columns=[target_column])
-    y_train = train_df[target_column]
+    X_train = df_train.drop(columns=[target])
+    y_train = df_train[target]
     
-    X_test = test_df.drop(columns=[target_column])
-    y_test = test_df[target_column]
+    X_test = df_test.drop(columns=[target])
+    y_test = df_test[target]
     
     # in case of a model with standardization, standardize train and test set again
     if scaling:
