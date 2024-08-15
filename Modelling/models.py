@@ -160,11 +160,6 @@ def evaluation_metrics(model_name, model, df_train, df_test, target, random_stat
         y_test_pred = np.exp(y_test_pred)
         y_train = np.exp(y_train)
         y_test = np.exp(y_test)
-    elif outcome_transformation == "sqrt":
-        y_train_pred = np.square(y_train_pred)
-        y_test_pred = np.square(y_test_pred)
-        y_train = np.square(y_train)
-        y_test = np.square(y_test)
         
     print("Evaluating the model...")
     
@@ -177,15 +172,18 @@ def evaluation_metrics(model_name, model, df_train, df_test, target, random_stat
     test_rmse = np.sqrt(mean_squared_error(y_test, y_test_pred))
     test_mae = mean_absolute_error(y_test, y_test_pred)
     test_mape = mean_absolute_percentage_error(y_test, y_test_pred)
-
+    
     # collect metrics
     results_dict = {
-        "Model": [model_name] * 6,
-        "Metric": ["Training RMSE", "Training MAE", "Training MAPE",
-                   "Testing RMSE", "Testing MAE", "Testing MAPE"],
-        "Value": [f"{train_rmse:.2f}", f"{train_mae:.2f}", f"{train_mape:.2f}",
-                  f"{test_rmse:.2f}", f"{test_mae:.2f}", f"{test_mape:.2f}"]
+    "Model": [model_name],
+    "Training RMSE": [f"{train_rmse:.2f}"],
+    "Training MAE": [f"{train_mae:.2f}"],
+    "Training MAPE": [f"{train_mape:.2f}"],
+    "Testing RMSE": [f"{test_rmse:.2f}"],
+    "Testing MAE": [f"{test_mae:.2f}"],
+    "Testing MAPE": [f"{test_mape:.2f}"]
     }
 
     results_df = pd.DataFrame(results_dict)
+
     return results_df
