@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import LassoCV, LinearRegression
+from sklearn.tree import DecisionTreeRegressor
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error, mean_absolute_percentage_error
 from sklearn.model_selection import GridSearchCV
@@ -127,6 +128,51 @@ def random_forest_regression(df_train, target, random_state=42):
     feature_importance_df = feature_importance_df.sort_values(by="Importance", ascending=False).reset_index(drop=True)
 
     print("\nFeature Importance (Random Forest):")
+    print(feature_importance_df)
+    
+    return best_model, feature_importance_df
+
+def decision_tree_regression(df_train, target, random_state=42):
+    # split data into features and target
+    X_train = df_train.drop(columns=[target])
+    y_train = df_train[target]
+    
+    # define the model
+    dt = DecisionTreeRegressor(random_state=random_state)
+    
+    # define a pipeline that includes feature selection and model training
+    pipeline = Pipeline([
+        ('feature_selection', SelectFromModel(dt, max_features=20)),
+        ('dt', dt)
+    ])
+    
+    # define the hyperparameter grid
+    param_grid = {
+        'dt__max_depth': [10, 20, 30],
+        'dt__min_samples_split': [2, 5, 10],
+        'dt__min_samples_leaf': [1, 2, 4]
+    }
+    
+    # perform GridSearchCV with cross-validation
+    grid_search = GridSearchCV(pipeline, param_grid, cv=5, n_jobs=-1, verbose=2)
+    grid_search.fit(X_train, y_train)
+    
+    # best model
+    best_model = grid_search.best_estimator_
+    
+    print(f"Best parameters found: {grid_search.best_params_}")
+    
+    # feature importance
+    selected_features = best_model.named_steps['feature_selection'].get_support(indices=True)
+    selected_feature_names = X_train.columns[selected_features]
+    feature_importance_dict = {
+        "Feature": selected_feature_names,
+        "Importance": best_model.named_steps['dt'].feature_importances_
+    }
+    feature_importance_df = pd.DataFrame(feature_importance_dict)
+    feature_importance_df = feature_importance_df.sort_values(by="Importance", ascending=False).reset_index(drop=True)
+
+    print("\nFeature Importance (Decision Tree):")
     print(feature_importance_df)
     
     return best_model, feature_importance_df
