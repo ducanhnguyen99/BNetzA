@@ -8,8 +8,24 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.feature_selection import SelectFromModel
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import DBSCAN
 
-def lasso_regression(df_train, target, random_state=42):
+technical_blocks_variables = [
+    "yCables.all.N13.sum", "yCables.all.N57.sum", "yCables.all.tot", "yCables.circuit.N3", "yCables.circuit.N5", "yCables.circuit.N7",
+    "yConnections.incl.inj.N1357.sum", "yConnections.other.dso.lower.N1to6.sum", "yConnections.other.dso.same.tot",
+    "yEnergy.delivered.net.N23.sum", "yEnergy.delivered.net.N2to4.sum", "yEnergy.delivered.net.N45.sum", "yEnergy.delivered.net.N5to7.sum", "yEnergy.delivered.net.N67.sum", "yEnergy.delivered.net.tot", 
+    "yInjection.net.N2to4.sum", "yInjection.net.N5to7.sum", 
+    "yInstalledPower.KWKG.other.tot", "yInstalledPower.N1to4.sum", "yInstalledPower.N5to6.sum", "yInstalledPower.N5to7.sum", "yInstalledPower.N7", "yInstalledPower.nonsimcurt.N1to4.sum", 
+    "yInstalledPower.nonsimcurt.N5to7.sum", "yInstalledPower.non.solar.wind.tot",
+    "yInstalledPower.reducedAPFI.N1to4.sum", "yInstalledPower.reducedAPFI.N5to7.sum", "yInstalledPower.reducedAPFI.tot", "yInstalledPower.renewables.bio.hydro.tot", 
+    "yInstalledPower.renewables.solar.tot", "yInstalledPower.renewables.solar.wind.tot", "yInstalledPower.renewables.wind.tot", 
+    "yLines.all.N13.sum", "yLines.all.N57.sum", "yLines.all.tot", "yLines.circuit.N3", "yLines.circuit.N5", "yLines.circuit.N7",
+    "yMeters.cp.ctrl.tot", "yMeters.house.tot", "yMeters.noncp.ctrl.excl.house.tot", "yMeters.noncp.ctrl.tot", "yMeters.read.tot", 
+    "yNet.length.N5", "yNet.length.N7", "yNet.length.all.tot",
+    "yPeakload.N4", "yPeakload.N6", "yPeakload.abs.sim.N4", "yPeakload.from.higher.sim.N4", "yPeakload.into.higher.sim.N4", "yPeakload.into.higher.sim.nett.N6"
+    ]
+
+def lasso_regression(df_train, df_test, target, model_name, outcome_transformation = "None", random_state=42):
     # split data into features and target
     X_train = df_train.drop(columns=[target])
     y_train = df_train[target]
@@ -23,10 +39,12 @@ def lasso_regression(df_train, target, random_state=42):
     # Lasso regression with cross-validation for hyperparameter tuning of regularization parameter alpha
     lasso = LassoCV(cv=5, random_state=random_state, max_iter=10000).fit(X_train_scaled, y_train)
     
+    # predict on test data and evaluate the model
+    y_train, y_train_pred, y_test, y_test_pred = model_predict(lasso, df_train, df_test, target, outcome_transformation, random_state, scaling = True)
+    eval_metrics = model_evaluation(y_train, y_train_pred, y_test, y_test_pred, model_name)
+    
     selected_features_lasso = np.where(lasso.coef_ != 0)[0]
     selected_feature_names_lasso = X_train.columns[selected_features_lasso]
-
-    print(f"Selected features by Lasso ({len(selected_feature_names_lasso)}): {selected_feature_names_lasso}")
     
     # collect variable importance
     variable_importance_dict = {
@@ -35,20 +53,18 @@ def lasso_regression(df_train, target, random_state=42):
     }
     variable_importance_df = pd.DataFrame(variable_importance_dict)
     variable_importance_df = variable_importance_df.sort_values(by="Coefficient", ascending=False).reset_index(drop=True)
-
-    print("\nVariable Importance (Lasso):")
-    print(variable_importance_df)
     
-    return lasso, variable_importance_df
+    return eval_metrics, lasso, variable_importance_df
 
-def lasso_feature_selection_linear_regression(df_train, target, random_state=42):
-    # Split data into features and target
+def lasso_feature_selection_linear_regression(df_train, df_test, target, model_name, outcome_transformation = "None", random_state=42):
+    # split data into features and target
     X_train = df_train.drop(columns=[target])
     y_train = df_train[target]
     
-    # Standardize the features using only the training data
+    # standardize the features using only the training data
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
+    X_train_scaled = pd.DataFrame(X_train_scaled, columns=X_train.columns)
     
     print("Performing Lasso regression for feature selection...")
     
@@ -57,36 +73,34 @@ def lasso_feature_selection_linear_regression(df_train, target, random_state=42)
     
     selected_features_lasso = np.where(lasso.coef_ != 0)[0]
     selected_feature_names_lasso = X_train.columns[selected_features_lasso]
-
-    print(f"Selected features by Lasso ({len(selected_feature_names_lasso)}): {selected_feature_names_lasso}")
     
-    # If no features are selected by Lasso, raise an exception
+    # if no features are selected by Lasso, raise an exception
     if len(selected_feature_names_lasso) == 0:
         raise ValueError("No features were selected by Lasso. Try adjusting the Lasso parameters.")
     
-    # Collect variable importance
+    # use only the selected features for the linear regression model
+    X_train_selected = X_train_scaled[selected_feature_names_lasso]
+
+    print("Performing Linear regression...")
+    # fit linear regression model with selected features
+    linear_regression_model = LinearRegression().fit(X_train_selected, y_train)
+    
+    # predict on test data and evaluate the model
+    selected_columns = selected_feature_names_lasso.tolist() + [target]
+    y_train, y_train_pred, y_test, y_test_pred = model_predict(linear_regression_model, df_train[selected_columns], df_test[selected_columns], target, outcome_transformation, random_state, scaling = True)
+    eval_metrics = model_evaluation(y_train, y_train_pred, y_test, y_test_pred, model_name)
+    
+    # collect variable importance
     variable_importance_dict = {
         "Feature": selected_feature_names_lasso,
         "Coefficient": lasso.coef_[selected_features_lasso]
     }
     variable_importance_df = pd.DataFrame(variable_importance_dict)
     variable_importance_df = variable_importance_df.sort_values(by="Coefficient", ascending=False).reset_index(drop=True)
-
-    print("\nVariable Importance (Lasso):")
-    print(variable_importance_df)
     
-    # Use only the selected features for the linear regression model
-    X_train_selected = X_train[selected_feature_names_lasso]
+    return eval_metrics, linear_regression_model, variable_importance_df
 
-    # Fit linear regression model with selected features
-    linear_regression_model = LinearRegression().fit(X_train_selected, y_train)
-    
-    print("\nFitted Linear Regression model with selected features.")
-    
-    return linear_regression_model, variable_importance_df, selected_feature_names_lasso
-
-
-def random_forest_regression(df_train, target, random_state=42):
+def random_forest_regression(df_train, df_test, target, model_name, outcome_transformation = "None", random_state=42):
     # split data into features and target
     X_train = df_train.drop(columns=[target])
     y_train = df_train[target]
@@ -108,6 +122,8 @@ def random_forest_regression(df_train, target, random_state=42):
         'rf__min_samples_leaf': [2, 4]
         }
     
+    print("Performing Random Forest...")
+    
     # perform GridSearchCV with cross-validation
     grid_search = GridSearchCV(pipeline, param_grid, cv=5, n_jobs=-1, verbose=2)
     grid_search.fit(X_train, y_train)
@@ -115,7 +131,9 @@ def random_forest_regression(df_train, target, random_state=42):
     # best model
     best_model = grid_search.best_estimator_
     
-    print(f"Best parameters found: {grid_search.best_params_}")
+    # predict on test data and evaluate the model
+    y_train, y_train_pred, y_test, y_test_pred = model_predict(best_model, df_train, df_test, target, outcome_transformation, random_state)
+    eval_metrics = model_evaluation(y_train, y_train_pred, y_test, y_test_pred, model_name)
     
     # feature importance
     selected_features = best_model.named_steps['feature_selection'].get_support(indices=True)
@@ -126,13 +144,10 @@ def random_forest_regression(df_train, target, random_state=42):
     }
     feature_importance_df = pd.DataFrame(feature_importance_dict)
     feature_importance_df = feature_importance_df.sort_values(by="Importance", ascending=False).reset_index(drop=True)
-
-    print("\nFeature Importance (Random Forest):")
-    print(feature_importance_df)
     
-    return best_model, feature_importance_df
+    return eval_metrics, best_model, feature_importance_df
 
-def decision_tree_regression(df_train, target, random_state=42):
+def decision_tree_regression(df_train, df_test, target, model_name, outcome_transformation = "None", random_state=42):
     # split data into features and target
     X_train = df_train.drop(columns=[target])
     y_train = df_train[target]
@@ -145,6 +160,8 @@ def decision_tree_regression(df_train, target, random_state=42):
         ('feature_selection', SelectFromModel(dt, max_features=20)),
         ('dt', dt)
     ])
+
+    print("Performing Decision Tree...")
     
     # define the hyperparameter grid
     param_grid = {
@@ -159,8 +176,10 @@ def decision_tree_regression(df_train, target, random_state=42):
     
     # best model
     best_model = grid_search.best_estimator_
-    
-    print(f"Best parameters found: {grid_search.best_params_}")
+             
+    # predict on test data and evaluate the model
+    y_train, y_train_pred, y_test, y_test_pred = model_predict(best_model, df_train, df_test, target, outcome_transformation, random_state)
+    eval_metrics = model_evaluation(y_train, y_train_pred, y_test, y_test_pred, model_name)
     
     # feature importance
     selected_features = best_model.named_steps['feature_selection'].get_support(indices=True)
@@ -171,15 +190,160 @@ def decision_tree_regression(df_train, target, random_state=42):
     }
     feature_importance_df = pd.DataFrame(feature_importance_dict)
     feature_importance_df = feature_importance_df.sort_values(by="Importance", ascending=False).reset_index(drop=True)
-
-    print("\nFeature Importance (Decision Tree):")
-    print(feature_importance_df)
     
-    return best_model, feature_importance_df
+    return eval_metrics, best_model, feature_importance_df
+
+def create_clusters(df_train):
+
+    # select only variables from the technical blocks
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(df_train[technical_blocks_variables])
+
+    dbscan = DBSCAN(eps=0.5, min_samples=5)
+    train_clusters = dbscan.fit_predict(X_scaled)
+
+    # add cluster labels to train df
+    df_train['Cluster'] = train_clusters
+
+    # split the train tf based on the cluster labels
+    df_train_c0 = df_train[df_train['Cluster'] == 0].drop(['Cluster'], axis=1)
+    df_train_c1 = df_train[df_train['Cluster'] == -1].drop(['Cluster'], axis=1)
+    
+    return df_train_c0, df_train_c1, dbscan, scaler
+
+def cluster_based_modeling(df_train, df_test, target, model_name, outcome_transformation = "None", random_state = 42):
+    
+    # create clusters of network providers
+    df_train_c0, df_train_c1, dbscan, scaler = create_clusters(df_train)
+    
+    # scale the test data using the scaler fitted on the training data
+    X_test_scaled = scaler.transform(df_test[technical_blocks_variables])
+    
+    print("Performing Cluster-Based Modeling...")
+
+    # apply the DBSCAN model to the test data
+    test_clusters = dbscan.fit_predict(X_test_scaled)
+
+    # add cluster labels to test df
+    df_test['Cluster'] = test_clusters
+
+    # split the test tf based on the cluster labels
+    df_test_c0 = df_test[df_test['Cluster'] == 0].drop(['Cluster'], axis=1)
+    df_test_c1 = df_test[df_test['Cluster'] == -1].drop(['Cluster'], axis=1)
+    
+    # train lasso on both clusters and track evaluation
+    lasso_c0, lasso_vip_c0 = lasso_regression(df_train_c0, target)
+    y_train_lasso_c0, y_train_pred_lasso_c0, y_test_lasso_c0, y_test_pred_lasso_c0 = model_predict(lasso_c0, df_train_c0, df_test_c0, target, outcome_transformation, random_state, scaling = True)
+    eval_metrics_c0 = model_evaluation(y_train_lasso_c0, y_train_pred_lasso_c0, y_test_lasso_c0, y_test_pred_lasso_c0, "Lasso")
+    
+    lasso_c1, lasso_vip_c1 = lasso_regression(df_train_c1, target)
+    y_train_lasso_c1, y_train_pred_lasso_c1, y_test_lasso_c1, y_test_pred_lasso_c1 = model_predict(lasso_c1, df_train_c1, df_test_c1, target, outcome_transformation, random_state, scaling = True)
+    eval_metrics_c1 = model_evaluation(y_train_lasso_c1, y_train_pred_lasso_c1, y_test_lasso_c1, y_test_pred_lasso_c1, "Lasso")
+    
+    # train random forest on both clusters and track evaluation
+    rf_c0, rf_vip_c0 = random_forest_regression(df_train_c0, target)
+    y_train_rf_c0, y_train_pred_rf_c0, y_test_rf_c0, y_test_pred_rf_c0 = model_predict(rf_c0, df_train_c0, df_test_c0, target, outcome_transformation, random_state)
+    eval_metrics_c0_rf = model_evaluation(y_train_rf_c0, y_train_pred_rf_c0, y_test_rf_c0, y_test_pred_rf_c0, "Random Forest")
+    eval_metrics_c0 = pd.concat([eval_metrics_c0, eval_metrics_c0_rf], ignore_index=True)
+    
+    rf_c1, rf_vip_c1 = random_forest_regression(df_train_c1, target)
+    y_train_rf_c1, y_train_pred_rf_c1, y_test_rf_c1, y_test_pred_rf_c1 = model_predict(rf_c1, df_train_c1, df_test_c1, target, outcome_transformation, random_state)
+    eval_metrics_c1_rf = model_evaluation(y_train_rf_c1, y_train_pred_rf_c1, y_test_rf_c1, y_test_pred_rf_c1, "Random Forest")
+    eval_metrics_c1 = pd.concat([eval_metrics_c1, eval_metrics_c1_rf], ignore_index=True)
+    
+    # add other models here
+    
+    # identify the c0 model with the lowest test MAPE
+    eval_metrics_c0["Testing MAPE"] = pd.to_numeric(eval_metrics_c0["Testing MAPE"], errors='coerce')
+    best_model_df_c0 = eval_metrics_c0.loc[eval_metrics_c0["Testing MAPE"].idxmin()]
+    
+    # identify the c1 model with the lowest test MAPE
+    eval_metrics_c1["Testing MAPE"] = pd.to_numeric(eval_metrics_c1["Testing MAPE"], errors='coerce')
+    best_model_df_c1 = eval_metrics_c1.loc[eval_metrics_c1["Testing MAPE"].idxmin()]
+    
+    # calculate new test metrics across both clusters
+    best_model_c0 = best_model_df_c0["Model"]
+    if best_model_c0 == "Lasso":
+        y_train_c0, y_train_pred_c0, y_test_c0, y_test_pred_c0 = model_predict(lasso_c0, df_train_c0, df_test_c0, target, outcome_transformation, random_state, scaling = True)
+    elif best_model_c0 == "Random Forest":
+        y_train_c0, y_train_pred_c0, y_test_c0, y_test_pred_c0 = model_predict(rf_c0, df_train_c0, df_test_c0, target, outcome_transformation, random_state)
+        
+    best_model_c1 = best_model_df_c1["Model"]
+    if best_model_c1 == "Lasso":
+        y_train_c1, y_train_pred_c1, y_test_c1, y_test_pred_c1 = model_predict(lasso_c1, df_train_c1, df_test_c1, target, outcome_transformation, random_state, scaling = True)
+    elif best_model_c1 == "Random Forest":
+        y_train_c1, y_train_pred_c1, y_test_c1, y_test_pred_c1 = model_predict(rf_c1, df_train_c1, df_test_c1, target, outcome_transformation, random_state)
+    
+    # concatenate all data
+    y_train = np.concatenate([y_train_c0, y_train_c1], axis=0)
+    y_train_pred = np.concatenate([y_train_pred_c0, y_train_pred_c1], axis=0)
+    y_test = np.concatenate([y_test_c0, y_test_c1], axis=0)
+    y_test_pred = np.concatenate([y_test_pred_c0, y_test_pred_c1], axis=0)
+    
+    model_name = f"{model_name}_{best_model_c0}_{best_model_c1}"
+    
+    results_df = model_evaluation(y_train, y_train_pred, y_test, y_test_pred, model_name)
+
+    return results_df
 
 
-def evaluation_metrics(model_name, model, df_train, df_test, target, random_state=42, scaling = False, outcome_transformation = "None"):
-    # split data into features and target
+# def evaluation_metrics(model_name, model, df_train, df_test, target, random_state=42, scaling = False, outcome_transformation = "None"):
+#     # split data into features and target
+#     X_train = df_train.drop(columns=[target])
+#     y_train = df_train[target]
+    
+#     X_test = df_test.drop(columns=[target])
+#     y_test = df_test[target]
+    
+#     # in case of a model with standardization, standardize train and test set again
+#     if scaling:
+#         scaler = StandardScaler()
+#         X_train_scaled = scaler.fit_transform(X_train)
+#         X_test_scaled = scaler.transform(X_test)
+#     else:
+#         X_train_scaled = X_train
+#         X_test_scaled = X_test
+
+#     print("Predicting on the training and test data...")
+
+#     y_train_pred = model.predict(X_train_scaled)
+#     y_test_pred = model.predict(X_test_scaled)
+    
+#     # in case of outcome transformation, revert to have original scale of data
+#     if outcome_transformation == "log":
+#         y_train_pred = np.exp(y_train_pred)
+#         y_test_pred = np.exp(y_test_pred)
+#         y_train = np.exp(y_train)
+#         y_test = np.exp(y_test)
+        
+#     print("Evaluating the model...")
+    
+#     # evaluating on train data
+#     train_rmse = np.sqrt(mean_squared_error(y_train, y_train_pred))
+#     train_mae = mean_absolute_error(y_train, y_train_pred)
+#     train_mape = mean_absolute_percentage_error(y_train, y_train_pred)
+
+#     # evaluating on test data
+#     test_rmse = np.sqrt(mean_squared_error(y_test, y_test_pred))
+#     test_mae = mean_absolute_error(y_test, y_test_pred)
+#     test_mape = mean_absolute_percentage_error(y_test, y_test_pred)
+    
+#     # collect metrics
+#     results_dict = {
+#     "Model": [model_name],
+#     "Training RMSE": [f"{train_rmse:.2f}"],
+#     "Training MAE": [f"{train_mae:.2f}"],
+#     "Training MAPE": [f"{train_mape:.2f}"],
+#     "Testing RMSE": [f"{test_rmse:.2f}"],
+#     "Testing MAE": [f"{test_mae:.2f}"],
+#     "Testing MAPE": [f"{test_mape:.2f}"]
+#     }
+
+#     results_df = pd.DataFrame(results_dict)
+
+#     return results_df
+
+def model_predict(model, df_train, df_test, target, outcome_transformation = "None", random_state=42, scaling = False):
     X_train = df_train.drop(columns=[target])
     y_train = df_train[target]
     
@@ -195,8 +359,6 @@ def evaluation_metrics(model_name, model, df_train, df_test, target, random_stat
         X_train_scaled = X_train
         X_test_scaled = X_test
 
-    print("Predicting on the training and test data...")
-
     y_train_pred = model.predict(X_train_scaled)
     y_test_pred = model.predict(X_test_scaled)
     
@@ -206,7 +368,15 @@ def evaluation_metrics(model_name, model, df_train, df_test, target, random_stat
         y_test_pred = np.exp(y_test_pred)
         y_train = np.exp(y_train)
         y_test = np.exp(y_test)
-        
+    
+    return y_train, y_train_pred, y_test, y_test_pred
+
+
+    selected_columns = list(selected_feature_names_lasso).copy()
+    selected_columns.append(target)
+    y_train, y_train_pred, y_test, y_test_pred = model_predict(linear_regression_model, df_train[selected_columns], df_test[selected_columns], target, outcome_transformation, random_state, scaling = True)
+
+def model_evaluation(y_train, y_train_pred, y_test, y_test_pred, model_name):
     print("Evaluating the model...")
     
     # evaluating on train data
@@ -231,5 +401,7 @@ def evaluation_metrics(model_name, model, df_train, df_test, target, random_stat
     }
 
     results_df = pd.DataFrame(results_dict)
+    print("\n")
+    print(results_df)
 
     return results_df
