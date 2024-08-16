@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from sklearn.linear_model import LassoCV, LinearRegression
 from sklearn.tree import DecisionTreeRegressor
+import xgboost as xgb
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error, mean_absolute_percentage_error
 from sklearn.model_selection import GridSearchCV
@@ -206,6 +207,78 @@ def decision_tree_regression(df_train, df_test, target, model_name, outcome_tran
     feature_importance_df = feature_importance_df.sort_values(by="Importance", ascending=False).reset_index(drop=True)
     
     return eval_metrics, best_model, feature_importance_df
+
+
+def xgboost_regression(df_train, df_test, target, model_name, outcome_transformation="None", random_state=42, feature_selection_threshold=0.1):
+    # Split data into features and target
+    X_train = df_train.drop(columns=[target])
+    y_train = df_train[target]
+    
+    # Define XGBoost parameters and perform grid search for hyperparameter tuning
+    param_grid = {
+        'objective': ['reg:squarederror'],
+        'eval_metric': ['rmse'],
+        'max_depth': [3, 5, 7],       # Adjusted depth
+        'learning_rate': [0.01, 0.1], # Adjusted learning rates
+        'n_estimators': [100, 200]    # Adjusted number of estimators
+    }
+    
+    xgb_model = xgb.XGBRegressor(seed=random_state)
+    grid_search = GridSearchCV(estimator=xgb_model, param_grid=param_grid, scoring='neg_mean_squared_error', cv=5, n_jobs=-1)
+    grid_search.fit(X_train, y_train)
+    
+    # Get the best model from grid search
+    xgboost_model = grid_search.best_estimator_
+
+    # Perform early stopping
+    early_stopping_rounds = 50
+    evals = [(X_train, y_train)]
+    xgboost_model.fit(X_train, y_train, eval_set=evals, early_stopping_rounds=early_stopping_rounds, verbose=False)
+    
+    # Get feature importances and select important features
+    feature_importances = xgboost_model.feature_importances_
+    feature_names = X_train.columns
+    
+    # Determine which features are above the importance threshold
+    important_features = feature_importances > feature_selection_threshold
+    
+    # Ensure that the boolean index is correctly applied
+    if np.sum(important_features) == 0:
+        raise ValueError("No features meet the importance threshold.")
+    
+    # Filter features based on importance
+    X_train_selected = X_train.iloc[:, important_features]
+    X_test = df_test.drop(columns=[target])
+    X_test_selected = X_test.iloc[:, important_features]
+    
+    # Retrain XGBoost with selected features
+    xgboost_model.fit(X_train_selected, y_train)
+    
+    # Prediction
+    selected_columns = list(feature_names[important_features]) + [target]
+    y_train, y_train_pred, y_test, y_test_pred = model_predict(
+        xgboost_model,
+        df_train[selected_columns],
+        df_test[selected_columns],
+        target,
+        outcome_transformation,
+        random_state,
+        scaling=False  # Scaling is not needed
+    )
+    
+    # Evaluation
+    eval_metrics = model_evaluation(y_train, y_train_pred, y_test, y_test_pred, model_name)
+    
+    # Collect and return feature importances for the selected features
+    selected_feature_names = feature_names[important_features]
+    importance_dict = {
+        'Feature': selected_feature_names,
+        'Importance': feature_importances[important_features]
+    }
+    importance_df = pd.DataFrame(importance_dict)
+    importance_df = importance_df.sort_values(by='Importance', ascending=False).reset_index(drop=True)
+    
+    return eval_metrics, xgboost_model, importance_df
 
 def create_clusters(df_train):
 
