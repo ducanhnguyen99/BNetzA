@@ -86,6 +86,10 @@ def lasso_feature_selection_linear_regression(df_train, df_test, target, model_n
     # fit linear regression model with selected features - use different library than sklearn due to p-values calculation
     sm_model = sm.OLS(y_train, X_train_selected).fit()
 
+    # # Set negative coefficients to zero 
+    # coefficients = sm_model.params
+    # coefficients[coefficients < 0] = 0
+
     # predict on test data using the selected features
     X_test = df_test.drop(columns=[target])
     X_test_scaled = scaler.transform(X_test)
@@ -109,15 +113,7 @@ def lasso_feature_selection_linear_regression(df_train, df_test, target, model_n
     
     eval_metrics = model_evaluation(y_train, y_train_pred, y_test, y_test_pred, model_name)
     
-    # collect variable importance
-    variable_importance_dict = {
-        "Feature": selected_feature_names_lasso,
-        "Coefficient": lasso.coef_[selected_features_lasso]
-    }
-    variable_importance_df = pd.DataFrame(variable_importance_dict)
-    variable_importance_df = variable_importance_df.sort_values(by="Coefficient", ascending=False).reset_index(drop=True)
-    
-    return eval_metrics, sm_model, variable_importance_df
+    return eval_metrics, sm_model
 
 def random_forest_regression(df_train, df_test, target, model_name, outcome_transformation = "None", random_state=42):
     # split data into features and target
@@ -135,11 +131,18 @@ def random_forest_regression(df_train, df_test, target, model_name, outcome_tran
     
     # define the hyperparameter grid
     param_grid = {
-        'rf__n_estimators': [ 200, 500],
-        'rf__max_depth': [ 20, 30],
-        'rf__min_samples_split': [5, 10],
-        'rf__min_samples_leaf': [2, 4]
-        }
+    'rf__n_estimators': [100],  
+    'rf__max_depth': [None, 10],  
+    'rf__min_samples_split': [2],  
+    'rf__min_samples_leaf': [1, 2],  
+    }
+    
+    # param_grid = {
+    # 'rf__n_estimators': [100, 200, 500],  
+    # 'rf__max_depth': [None, 10, 20],  
+    # 'rf__min_samples_split': [2, 5],  
+    # 'rf__min_samples_leaf': [1, 2],  
+    # }
     
     # perform GridSearchCV with cross-validation
     grid_search = GridSearchCV(pipeline, param_grid, cv=5, n_jobs=-1, verbose=2)
@@ -336,8 +339,6 @@ def cluster_based_modeling(df_train, df_test, target, model_name, outcome_transf
     eval_metrics_c1_rf = model_evaluation(y_train_rf_c1, y_train_pred_rf_c1, y_test_rf_c1, y_test_pred_rf_c1, "Random Forest")
     eval_metrics_c1 = pd.concat([eval_metrics_c1, eval_metrics_c1_rf], ignore_index=True)
     
-    # add other models here
-    
     # identify the c0 model with the lowest test MAPE
     eval_metrics_c0["Testing MAPE"] = pd.to_numeric(eval_metrics_c0["Testing MAPE"], errors='coerce')
     best_model_df_c0 = eval_metrics_c0.loc[eval_metrics_c0["Testing MAPE"].idxmin()]
@@ -434,3 +435,19 @@ def model_evaluation(y_train, y_train_pred, y_test, y_test_pred, model_name):
     results_df = pd.DataFrame(results_dict)
 
     return results_df
+
+from collections import Counter
+
+def variable_frequency(vips, name):
+    # initialize a counter to keep track of variable occurrences
+    variable_counter = Counter()
+
+    for vip in vips:
+        variables = vip['Feature']  
+        # update the counter with the variables
+        variable_counter.update(variables)
+
+    variable_counts_df = pd.DataFrame(variable_counter.items(), columns=['Variable', name])
+    variable_counts_df = variable_counts_df.sort_values(by=name, ascending=False).reset_index(drop=True)
+    
+    return variable_counts_df
