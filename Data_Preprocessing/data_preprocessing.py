@@ -126,7 +126,7 @@ def aggregate_and_sum_by_group(df):
     df = pd.concat([df, pd.DataFrame(new_columns)], axis=1)
     
     # filter out possibly correlated existing aggregate columns
-    df = df.filter(regex='^(?!.*(tot|sum|^cTOTEXn$)).*').copy()
+    df = df.filter(regex='^(?!.*(tot|sum)).*').copy()
 
     return df
 
@@ -162,8 +162,8 @@ def create_variations(df_train, df_test, random_state = 42):
     df_test_agg_log = df_test_xlog_ylog.copy().filter(regex='(tot|sum)|^cTOTEXn_log$')
     
     # only disaggregated features
-    df_train_non_agg = df_train.copy().filter(regex='^(?!.*(tot|sum|^cTOTEXn$)).*')
-    df_test_non_agg = df_test.copy().filter(regex='^(?!.*(tot|sum|^cTOTEXn$)).*')
+    df_train_non_agg = df_train.copy().filter(regex='^(?!.*(tot|sum)).*')
+    df_test_non_agg = df_test.copy().filter(regex='^(?!.*(tot|sum)).*')
     
     # aggregation only on N1-4 and N5-7
     df_train_group_agg = df_train.copy()

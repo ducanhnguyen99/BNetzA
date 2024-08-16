@@ -285,63 +285,11 @@ def cluster_based_modeling(df_train, df_test, target, model_name, outcome_transf
     results_df = model_evaluation(y_train, y_train_pred, y_test, y_test_pred, model_name)
 
     return results_df
-
-
-# def evaluation_metrics(model_name, model, df_train, df_test, target, random_state=42, scaling = False, outcome_transformation = "None"):
-#     # split data into features and target
-#     X_train = df_train.drop(columns=[target])
-#     y_train = df_train[target]
     
-#     X_test = df_test.drop(columns=[target])
-#     y_test = df_test[target]
-    
-#     # in case of a model with standardization, standardize train and test set again
-#     if scaling:
-#         scaler = StandardScaler()
-#         X_train_scaled = scaler.fit_transform(X_train)
-#         X_test_scaled = scaler.transform(X_test)
-#     else:
-#         X_train_scaled = X_train
-#         X_test_scaled = X_test
-
-#     print("Predicting on the training and test data...")
-
-#     y_train_pred = model.predict(X_train_scaled)
-#     y_test_pred = model.predict(X_test_scaled)
-    
-#     # in case of outcome transformation, revert to have original scale of data
-#     if outcome_transformation == "log":
-#         y_train_pred = np.exp(y_train_pred)
-#         y_test_pred = np.exp(y_test_pred)
-#         y_train = np.exp(y_train)
-#         y_test = np.exp(y_test)
-        
-#     print("Evaluating the model...")
-    
-#     # evaluating on train data
-#     train_rmse = np.sqrt(mean_squared_error(y_train, y_train_pred))
-#     train_mae = mean_absolute_error(y_train, y_train_pred)
-#     train_mape = mean_absolute_percentage_error(y_train, y_train_pred)
-
-#     # evaluating on test data
-#     test_rmse = np.sqrt(mean_squared_error(y_test, y_test_pred))
-#     test_mae = mean_absolute_error(y_test, y_test_pred)
-#     test_mape = mean_absolute_percentage_error(y_test, y_test_pred)
-    
-#     # collect metrics
-#     results_dict = {
-#     "Model": [model_name],
-#     "Training RMSE": [f"{train_rmse:.2f}"],
-#     "Training MAE": [f"{train_mae:.2f}"],
-#     "Training MAPE": [f"{train_mape:.2f}"],
-#     "Testing RMSE": [f"{test_rmse:.2f}"],
-#     "Testing MAE": [f"{test_mae:.2f}"],
-#     "Testing MAPE": [f"{test_mape:.2f}"]
-#     }
-
-#     results_df = pd.DataFrame(results_dict)
-
-#     return results_df
+def safe_exp(y, max_value=700):
+    # clip the input to avoid overflow
+    y_clipped = np.clip(y, None, max_value)
+    return np.exp(y_clipped)
 
 def model_predict(model, df_train, df_test, target, outcome_transformation = "None", random_state=42, scaling = False):
     X_train = df_train.drop(columns=[target])
@@ -364,11 +312,11 @@ def model_predict(model, df_train, df_test, target, outcome_transformation = "No
     
     # in case of outcome transformation, revert to have original scale of data
     if outcome_transformation == "log":
-        y_train_pred = np.exp(y_train_pred)
-        y_test_pred = np.exp(y_test_pred)
-        y_train = np.exp(y_train)
-        y_test = np.exp(y_test)
-    
+        y_train_pred = safe_exp(y_train_pred)
+        y_test_pred = safe_exp(y_test_pred)
+        y_train = safe_exp(y_train)
+        y_test = safe_exp(y_test)
+        
     return y_train, y_train_pred, y_test, y_test_pred
 
 
