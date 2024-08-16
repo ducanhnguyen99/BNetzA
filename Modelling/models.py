@@ -204,6 +204,8 @@ def create_clusters(df_train):
 
     # add cluster labels to train df
     df_train['Cluster'] = train_clusters
+    
+    print(df_train["Cluster"].value_counts())
 
     # split the train tf based on the cluster labels
     df_train_c0 = df_train[df_train['Cluster'] == 0].drop(['Cluster'], axis=1)
@@ -230,23 +232,23 @@ def cluster_based_modeling(df_train, df_test, target, model_name, outcome_transf
     # split the test tf based on the cluster labels
     df_test_c0 = df_test[df_test['Cluster'] == 0].drop(['Cluster'], axis=1)
     df_test_c1 = df_test[df_test['Cluster'] == -1].drop(['Cluster'], axis=1)
-    
+
     # train lasso on both clusters and track evaluation
-    lasso_c0, lasso_vip_c0 = lasso_regression(df_train_c0, target)
+    _, lasso_c0, lasso_vip_c0 = lasso_regression(df_train_c0, df_test_c0, target, model_name, outcome_transformation, random_state)
     y_train_lasso_c0, y_train_pred_lasso_c0, y_test_lasso_c0, y_test_pred_lasso_c0 = model_predict(lasso_c0, df_train_c0, df_test_c0, target, outcome_transformation, random_state, scaling = True)
     eval_metrics_c0 = model_evaluation(y_train_lasso_c0, y_train_pred_lasso_c0, y_test_lasso_c0, y_test_pred_lasso_c0, "Lasso")
     
-    lasso_c1, lasso_vip_c1 = lasso_regression(df_train_c1, target)
+    _, lasso_c1, lasso_vip_c1 = lasso_regression(df_train_c1, df_test_c1, target, model_name, outcome_transformation, random_state)
     y_train_lasso_c1, y_train_pred_lasso_c1, y_test_lasso_c1, y_test_pred_lasso_c1 = model_predict(lasso_c1, df_train_c1, df_test_c1, target, outcome_transformation, random_state, scaling = True)
     eval_metrics_c1 = model_evaluation(y_train_lasso_c1, y_train_pred_lasso_c1, y_test_lasso_c1, y_test_pred_lasso_c1, "Lasso")
     
     # train random forest on both clusters and track evaluation
-    rf_c0, rf_vip_c0 = random_forest_regression(df_train_c0, target)
+    _, rf_c0, rf_vip_c0 = random_forest_regression(df_train_c0, df_test_c0, target, model_name, outcome_transformation, random_state)
     y_train_rf_c0, y_train_pred_rf_c0, y_test_rf_c0, y_test_pred_rf_c0 = model_predict(rf_c0, df_train_c0, df_test_c0, target, outcome_transformation, random_state)
     eval_metrics_c0_rf = model_evaluation(y_train_rf_c0, y_train_pred_rf_c0, y_test_rf_c0, y_test_pred_rf_c0, "Random Forest")
     eval_metrics_c0 = pd.concat([eval_metrics_c0, eval_metrics_c0_rf], ignore_index=True)
     
-    rf_c1, rf_vip_c1 = random_forest_regression(df_train_c1, target)
+    _, rf_c1, rf_vip_c1 = random_forest_regression(df_train_c1, df_test_c1, target, model_name, outcome_transformation, random_state)
     y_train_rf_c1, y_train_pred_rf_c1, y_test_rf_c1, y_test_pred_rf_c1 = model_predict(rf_c1, df_train_c1, df_test_c1, target, outcome_transformation, random_state)
     eval_metrics_c1_rf = model_evaluation(y_train_rf_c1, y_train_pred_rf_c1, y_test_rf_c1, y_test_pred_rf_c1, "Random Forest")
     eval_metrics_c1 = pd.concat([eval_metrics_c1, eval_metrics_c1_rf], ignore_index=True)
@@ -265,14 +267,18 @@ def cluster_based_modeling(df_train, df_test, target, model_name, outcome_transf
     best_model_c0 = best_model_df_c0["Model"]
     if best_model_c0 == "Lasso":
         y_train_c0, y_train_pred_c0, y_test_c0, y_test_pred_c0 = model_predict(lasso_c0, df_train_c0, df_test_c0, target, outcome_transformation, random_state, scaling = True)
+        model_c0 = lasso_c0
     elif best_model_c0 == "Random Forest":
         y_train_c0, y_train_pred_c0, y_test_c0, y_test_pred_c0 = model_predict(rf_c0, df_train_c0, df_test_c0, target, outcome_transformation, random_state)
+        model_c0 = rf_c0
         
     best_model_c1 = best_model_df_c1["Model"]
     if best_model_c1 == "Lasso":
         y_train_c1, y_train_pred_c1, y_test_c1, y_test_pred_c1 = model_predict(lasso_c1, df_train_c1, df_test_c1, target, outcome_transformation, random_state, scaling = True)
+        model_c1 = lasso_c1
     elif best_model_c1 == "Random Forest":
         y_train_c1, y_train_pred_c1, y_test_c1, y_test_pred_c1 = model_predict(rf_c1, df_train_c1, df_test_c1, target, outcome_transformation, random_state)
+        model_c1 = rf_c1
     
     # concatenate all data
     y_train = np.concatenate([y_train_c0, y_train_c1], axis=0)
@@ -282,9 +288,9 @@ def cluster_based_modeling(df_train, df_test, target, model_name, outcome_transf
     
     model_name = f"{model_name}_{best_model_c0}_{best_model_c1}"
     
-    results_df = model_evaluation(y_train, y_train_pred, y_test, y_test_pred, model_name)
+    eval_metrics = model_evaluation(y_train, y_train_pred, y_test, y_test_pred, model_name)
 
-    return results_df
+    return eval_metrics, model_c0, model_c1
     
 def safe_exp(y, max_value=700):
     # clip the input to avoid overflow
