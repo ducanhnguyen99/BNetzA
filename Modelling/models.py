@@ -193,6 +193,75 @@ def decision_tree_regression(df_train, df_test, target, model_name, outcome_tran
     
     return eval_metrics, best_model, feature_importance_df
 
+import xgboost as xgb
+from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import mean_squared_error
+from sklearn.preprocessing import StandardScaler
+import pandas as pd
+import numpy as np
+
+def xgboost_regression(df_train, df_test, target, model_name, outcome_transformation="None", random_state=42, feature_selection_threshold=0.01):
+    # Split data into features and target
+    X_train = df_train.drop(columns=[target])
+    y_train = df_train[target]
+    
+    # Standardize the features using only the training data
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    
+    # Prepare data for XGBoost
+    dtrain = xgb.DMatrix(X_train_scaled, label=y_train)
+    
+    # Define XGBoost parameters and perform grid search for hyperparameter tuning
+    param_grid = {
+        'objective': ['reg:squarederror'],
+        'eval_metric': ['rmse'],
+        'max_depth': [3, 6, 10],
+        'learning_rate': [0.01, 0.1, 0.2],
+        'n_estimators': [100, 200, 300]
+    }
+    
+    xgb_model = xgb.XGBRegressor(seed=random_state)
+    grid_search = GridSearchCV(estimator=xgb_model, param_grid=param_grid, scoring='neg_mean_squared_error', cv=5, n_jobs=-1)
+    grid_search.fit(X_train_scaled, y_train)
+    
+    xgboost_model = grid_search.best_estimator_
+    
+    # Get feature importances
+    feature_importances = xgboost_model.feature_importances_
+    feature_names = X_train.columns
+    
+    # Feature selection based on importance
+    important_features = feature_importances > feature_selection_threshold
+    X_train_selected = X_train_scaled[:, important_features]
+    X_test = df_test.drop(columns=[target])
+    X_test_scaled = scaler.transform(X_test)
+    X_test_selected = X_test_scaled[:, important_features]
+    
+    # Retrain XGBoost with selected features
+    xgboost_model.fit(X_train_selected, y_train)
+    y_train_pred = xgboost_model.predict(X_train_selected)
+    y_test = df_test[target]
+    y_test_pred = xgboost_model.predict(X_test_selected)
+    
+    # Evaluate the model
+    eval_metrics = {
+        'Train RMSE': np.sqrt(mean_squared_error(y_train, y_train_pred)),
+        'Test RMSE': np.sqrt(mean_squared_error(y_test, y_test_pred))
+    }
+    
+    # Update feature importances with the selected features
+    selected_feature_names = feature_names[important_features]
+    importance_dict = {
+        'Feature': selected_feature_names,
+        'Importance': feature_importances[important_features]
+    }
+    importance_df = pd.DataFrame(importance_dict)
+    importance_df = importance_df.sort_values(by='Importance', ascending=False).reset_index(drop=True)
+    
+    return eval_metrics, xgboost_model, importance_df
+
+
 def create_clusters(df_train):
 
     # select only variables from the technical blocks
