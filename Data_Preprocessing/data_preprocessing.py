@@ -59,8 +59,6 @@ def apply_transformation(df_train, df_test, feature, target, degree=2, skewness_
     if skewness > skewness_threshold:
         df_train[feature] = np.log1p(df_train[feature])
         df_test[feature] = np.log1p(df_test[feature])
-        df_train.rename(columns={feature: feature}, inplace=True)
-        df_test.rename(columns={feature: feature}, inplace=True)
         return
     
     # prepare data for polynomial transformation
@@ -89,8 +87,6 @@ def apply_transformation(df_train, df_test, feature, target, degree=2, skewness_
         X_val = df_test[[feature]]
         X_poly_val = poly.transform(X_val)
         df_test[feature] = poly_reg.predict(X_poly_val)
-        df_train.rename(columns={feature: feature + "_poly"}, inplace=True)
-        df_test.rename(columns={feature: feature + "_poly"}, inplace=True)
 
 def transform_features(df_train, df_test, target, degree=2, skewness_threshold=0.5, improvement_threshold=0.01):
     """Iterate over df_train and df_test to apply transformations."""
