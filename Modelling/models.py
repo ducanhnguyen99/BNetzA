@@ -451,3 +451,9 @@ def variable_frequency(vips, name):
     variable_counts_df = variable_counts_df.sort_values(by=name, ascending=False).reset_index(drop=True)
     
     return variable_counts_df
+
+def percentage_deviation(y_train, y_train_pred, y_test, y_test_pred):
+    test_percentage_deviation = abs((y_test - y_test_pred) / y_test) * 100
+    test_df = pd.DataFrame({'Actual': y_test, 'Predicted': y_test_pred, 'Percentage Deviation': test_percentage_deviation})
+    test_df_sorted = test_df.sort_values(by='Percentage Deviation', ascending=False)
+    return test_df_sorted
