@@ -16,9 +16,6 @@ This repository contains all the materials, data, and scripts used for analyzing
   - `EDA_General.ipynb`: A broader exploratory analysis of the dataset, providing insights into the overall data distribution and characteristics.
 
 - **`Figures/`**: This folder contains figures generated during the analysis, used in the term paper and reports.
-  - Example files: 
-    - `Figure 1_cTOTEXn Distribution.png`
-    - `Figure 2_cTOTEXn Geographical Distribution.png`
 
 - **`Modelling/`**: Contains the modeling scripts and notebooks used in the analysis.
   - `models.py`: Implementation of the various models used in the analysis.
