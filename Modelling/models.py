@@ -222,7 +222,7 @@ def random_forest_regression(df_train, df_test, target, model_name, outcome_tran
         ('rf', rf)
     ])
     
-    # Define the hyperparameter grid
+    # Define the hyperparameter grid - reduce training time by manually setting best parameters
     param_grid = {
         'rf__n_estimators': [100],  
         'rf__max_depth': [None, 10],  
